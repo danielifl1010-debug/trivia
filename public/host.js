@@ -361,6 +361,10 @@ $('ai-go').onclick = async () => {
   if (!topic) { $('ai-err').textContent = 'נא לכתוב נושא'; return; }
   $('ai-err').textContent = '';
   $('ai-busy').classList.remove('hidden'); $('ai-go').disabled = true; $('ai-cancel').disabled = true;
+  const t0 = Date.now();
+  const busyText = $('ai-busy').querySelector('p');
+  const busyInt = setInterval(() => { busyText.textContent = 'יוצר שאלות... ' + Math.round((Date.now() - t0) / 1000) + ' שניות'; }, 500);
+  const requested = Number($('ai-count').value);
   try {
     const { questions } = await api('POST', '/api/generate', {
       topic, count: $('ai-count').value, difficulty: $('ai-level').value, notes: $('ai-notes').value,
@@ -378,12 +382,15 @@ $('ai-go').onclick = async () => {
       markDirty(); renderQuestions(); await flushSave();
     }
     $('ai-dialog').close();
-    toast('נוספו ' + questions.length + ' שאלות. כדאי לעבור עליהן לפני המשחק.', 5000);
+    toast(questions.length < requested
+      ? 'נוספו ' + questions.length + ' שאלות מתוך ' + requested + ' (שירות ה-AI היה עמוס). אפשר ליצור עוד.'
+      : 'נוספו ' + questions.length + ' שאלות. כדאי לעבור עליהן לפני המשחק.', 6000);
     const firstNew = document.querySelectorAll('.q-item.ai')[0];
     if (firstNew) firstNew.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     $('ai-err').textContent = e.message;
   } finally {
+    clearInterval(busyInt); busyText.textContent = 'יוצר שאלות...';
     $('ai-busy').classList.add('hidden'); $('ai-go').disabled = !status.ai; $('ai-cancel').disabled = false;
   }
 };
