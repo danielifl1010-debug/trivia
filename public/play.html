@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>הצטרפות למשחק</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<div id="conn" class="banner warn hidden">החיבור נותק, מתחבר מחדש...</div>
+<div class="phone">
+
+  <!-- כניסה -->
+  <div id="v-join" style="margin:auto 0">
+    <h1 class="center">📱 הצטרפות למשחק</h1>
+    <div class="card">
+      <label for="code">קוד משחק</label>
+      <input id="code" inputmode="numeric" maxlength="4" placeholder="1234" style="font-size:1.8rem;text-align:center;letter-spacing:8px">
+      <label for="name">השם שלך</label>
+      <input id="name" maxlength="20" placeholder="איך יקראו לך במשחק?">
+      <p id="join-err" style="color:#b91c1c;margin-top:10px;font-weight:600"></p>
+      <button id="join-btn" style="width:100%;margin-top:14px" class="big">כניסה</button>
+    </div>
+  </div>
+
+  <!-- המתנה -->
+  <div id="v-wait" class="status hidden">
+    <span class="icon">⏳</span>
+    <div id="wait-title"></div>
+    <div id="wait-msg" style="font-size:1.1rem;font-weight:400;margin-top:10px">אתה בפנים! מחכים שהמנחה יתחיל</div>
+  </div>
+
+  <!-- שאלה -->
+  <div id="v-q" class="hidden" style="display:flex;flex-direction:column;flex:1">
+    <div class="topbar"><span id="q-num"></span><span id="q-time" style="font-weight:800"></span></div>
+    <div id="q-text" style="font-size:1.3rem;font-weight:700;margin-bottom:14px;text-align:center"></div>
+    <div class="opts" id="q-opts"></div>
+  </div>
+
+  <!-- תוצאה -->
+  <div id="v-res" class="status hidden">
+    <span class="icon" id="res-icon"></span>
+    <div id="res-title"></div>
+    <div id="res-sub" style="font-size:1.1rem;font-weight:400;margin-top:12px"></div>
+  </div>
+
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/play.js"></script>
+</body>
+</html>

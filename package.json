@@ -1,0 +1,22 @@
+{
+  "name": "trivia-game",
+  "version": "2.0.0",
+  "description": "משחק טריוויה אינטראקטיבי בזמן אמת",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "mongodb": "^7.9.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
+  }
+}
