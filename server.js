@@ -43,7 +43,7 @@ async function createApp(env = process.env, { store: givenStore, fetchImpl, log 
       loggedIn: auth.isAdminCookieHeader(req.headers.cookie),
       storage: store.mode,
       warning: store.warning || null,
-      ai: !!env.GEMINI_API_KEY,
+      ai: !!(env.GEMINI_API_KEY || env.GROQ_API_KEY || env.OPENROUTER_API_KEY),
     });
   });
   app.post('/api/login', (req, res) => auth.login(req, res));
