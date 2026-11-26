@@ -43,6 +43,27 @@
     </div>
     <label for="quiz-title">שם החידון</label>
     <input id="quiz-title" maxlength="100">
+    <div class="row settings">
+      <div>
+        <label for="auto-advance">⏭️ מעבר אוטומטי לשאלה הבאה</label>
+        <select id="auto-advance">
+          <option value="0">כבוי - אני לוחץ "הבא"</option>
+          <option value="5">אחרי 5 שניות של הצגת התשובה</option>
+          <option value="8">אחרי 8 שניות של הצגת התשובה</option>
+          <option value="10">אחרי 10 שניות של הצגת התשובה</option>
+          <option value="15">אחרי 15 שניות של הצגת התשובה</option>
+          <option value="20">אחרי 20 שניות של הצגת התשובה</option>
+          <option value="30">אחרי 30 שניות של הצגת התשובה</option>
+        </select>
+      </div>
+      <div>
+        <label for="all-time">⏱ זמן מענה לכל השאלות</label>
+        <div class="row">
+          <input id="all-time" type="number" min="5" max="120" value="20" aria-label="שניות">
+          <button id="all-time-apply" class="shrink secondary" type="button">החל על כל השאלות</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -138,6 +159,10 @@
   <div class="opts" id="rev-opts"></div>
   <h2 class="center" style="margin-top:30px">🏅 טבלת המובילים</h2>
   <ol class="board" id="rev-board"></ol>
+  <div id="auto-box" class="auto-box hidden">
+    <span id="auto-text"></span>
+    <button id="auto-toggle" class="secondary small" type="button"></button>
+  </div>
   <div class="center row" style="margin-top:20px;max-width:600px;margin-inline:auto">
     <button id="rev-next" class="big">הבא ⬅️</button>
     <button id="rev-end" class="shrink secondary">סיום המשחק</button>

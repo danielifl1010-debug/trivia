@@ -132,3 +132,7 @@ dialog::backdrop { background: rgba(10, 15, 40, .65); }
   .lobby-grid { gap: 16px; }
   .qr-box img { width: 160px; height: 160px; }
 }
+
+.settings { margin-top: 6px; align-items: flex-end; }
+.auto-box { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 18px auto 0; font-size: 1.3rem; font-weight: 700; background: rgba(255,255,255,.12); padding: 10px 18px; border-radius: 30px; width: fit-content; }
+.auto-box.paused { opacity: .75; }

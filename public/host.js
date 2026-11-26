@@ -113,6 +113,10 @@ function renderSelect() {
   }
   s.value = quiz.id;
   $('quiz-title').value = quiz.title;
+  const auto = String(quiz.autoAdvance || 0);
+  const sel = $('auto-advance');
+  if (![...sel.options].some(o => o.value === auto)) { const o = el('option', '', 'אחרי ' + auto + ' שניות של הצגת התשובה'); o.value = auto; sel.appendChild(o); }
+  sel.value = auto;
 }
 
 function markDirty() {
@@ -127,7 +131,7 @@ async function flushSave() {
   if (!dirty || !quiz) return true;
   dirty = false;
   setSaveState('saving');
-  const snapshot = { title: quiz.title, questions: quiz.questions };
+  const snapshot = { title: quiz.title, autoAdvance: quiz.autoAdvance || 0, questions: quiz.questions };
   const id = quiz.id;
   saving = api('PUT', '/api/quizzes/' + encodeURIComponent(id), snapshot)
     .then(() => {
@@ -275,6 +279,15 @@ $('quiz-title').oninput = e => {
   const o = $('quiz-select').selectedOptions[0]; if (o) o.textContent = quiz.title || 'ללא שם';
   markDirty();
 };
+$('auto-advance').onchange = e => { quiz.autoAdvance = Number(e.target.value); markDirty(); };
+$('all-time-apply').onclick = () => {
+  const v = parseInt($('all-time').value, 10);
+  if (!(v >= 5 && v <= 120)) { toast('הזמן צריך להיות בין 5 ל-120 שניות'); return; }
+  if (!quiz.questions.length) return;
+  quiz.questions.forEach(q => { q.time = v; });
+  markDirty(); renderQuestions();
+  toast('כל השאלות עודכנו ל-' + v + ' שניות');
+};
 $('new-quiz').onclick = async () => {
   try {
     await flushSave();
@@ -305,7 +318,7 @@ $('add-q').onclick = () => {
 
 $('export').onclick = async () => {
   await flushSave();
-  const data = { title: quiz.title, questions: quiz.questions };
+  const data = { title: quiz.title, autoAdvance: quiz.autoAdvance || 0, questions: quiz.questions };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   download(blob, safeName(quiz.title || 'quiz') + '.json');
 };
@@ -318,7 +331,7 @@ $('import-file').onchange = async e => {
     try { data = JSON.parse(await f.text()); } catch { throw new Error('הקובץ אינו קובץ חידון תקין'); }
     if (!data || !Array.isArray(data.questions)) throw new Error('הקובץ אינו קובץ חידון תקין');
     await flushSave();
-    const q = await api('POST', '/api/quizzes', { title: data.title, questions: data.questions });
+    const q = await api('POST', '/api/quizzes', { title: data.title, autoAdvance: data.autoAdvance, questions: data.questions });
     list.unshift({ id: q.id, title: q.title, count: q.questions.length });
     await openQuiz(q.id);
     toast('החידון יובא בהצלחה');
@@ -403,6 +416,7 @@ function connectSocket() {
   socket.on('question', onQuestion);
   socket.on('answered', a => { $('q-answered').textContent = a.answered; $('q-total').textContent = a.playerCount; });
   socket.on('reveal', onReveal);
+  socket.on('auto', a => onAuto(a));
   socket.on('ended', onEnded);
 }
 
@@ -455,7 +469,7 @@ function renderPlayers(players) {
 
 function backToEditor() {
   game = null; sessionStorage.removeItem('trivia-game');
-  clearInterval(timerInt);
+  clearInterval(timerInt); clearInterval(autoInt);
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   show('v-edit');
 }
@@ -480,6 +494,7 @@ function renderOpts(box, options, correct) {
 }
 
 function onQuestion(q) {
+  clearInterval(autoInt);
   lastQuestion = q;
   show('v-q');
   $('q-num').textContent = 'שאלה ' + (q.index + 1) + ' / ' + q.total;
@@ -522,10 +537,29 @@ function onReveal(r) {
   });
   $('rev-next').textContent = r.isLast ? '🏆 לתוצאות הסופיות' : 'הבא ⬅️';
   $('rev-end').classList.toggle('hidden', r.isLast);
+  onAuto(r.auto, r.isLast);
+}
+
+// ספירה לאחור של המעבר האוטומטי
+let autoInt = null, autoIsLast = false;
+function onAuto(a, isLast) {
+  if (isLast !== undefined) autoIsLast = isLast;
+  clearInterval(autoInt);
+  const box = $('auto-box');
+  if (!a) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.classList.toggle('paused', a.paused);
+  $('auto-toggle').textContent = a.paused ? '▶️ המשך מעבר אוטומטי' : '⏸ עצירה';
+  $('auto-toggle').onclick = () => socket.emit('host:auto', { paused: !a.paused });
+  const where = autoIsLast ? 'התוצאות הסופיות' : 'השאלה הבאה';
+  if (a.paused || a.remainingMs == null) { $('auto-text').textContent = '⏸ המעבר האוטומטי מושהה'; return; }
+  const end = Date.now() + a.remainingMs;
+  const tick = () => { $('auto-text').textContent = '⏭️ ' + where + ' בעוד ' + Math.max(0, Math.ceil((end - Date.now()) / 1000)) + ' שניות'; };
+  tick(); autoInt = setInterval(tick, 250);
 }
 
 function onEnded(r) {
-  clearInterval(timerInt);
+  clearInterval(timerInt); clearInterval(autoInt);
   if (!game) return;
   lastResults = r.results;
   show('v-end');
@@ -570,6 +604,7 @@ document.addEventListener('keydown', e => {
   if (!['v-lobby', 'v-q', 'v-rev'].includes(view)) return;
   if (/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName) || $('ai-dialog').open) return;
   if (e.key === 'f' || e.key === 'F' || e.key === 'כ') { toggleFullscreen(); return; }
+  if ((e.key === 'p' || e.key === 'P' || e.key === 'פ') && view === 'v-rev' && !$('auto-box').classList.contains('hidden')) { $('auto-toggle').click(); return; }
   if (![' ', 'Enter', 'PageDown', 'ArrowLeft'].includes(e.key)) return;
   e.preventDefault();
   if (view === 'v-lobby') $('lobby-start').click();

@@ -370,3 +370,69 @@ test('game: player who refreshes mid-question is waited for and can still answer
     assert.equal(ctx.game.rooms.get(code).state, 'reveal');
   } finally { await ctx.close(); }
 });
+
+test('auto-advance: moves to next question and to results by itself; pause and resume work', async () => {
+  const ctx = await start();
+  try {
+    const c = await login(ctx);
+    const quiz = (await http(ctx, 'POST', '/api/quizzes', { title: 'auto', autoAdvance: 3, questions: [Q('1', 1, 5), Q('2', 1, 5), Q('3', 1, 5)] }, c)).body;
+    assert.equal(quiz.autoAdvance, 3);
+    const host = await connect(ctx, c);
+    const { code } = await emit(host, 'host:create', { quizId: quiz.id, hostKey: 'h' });
+    const a = await player(ctx, code, 'א');
+    // שאלה 1 -> תשובה -> חשיפה עם ספירה לאחור -> שאלה 2 מעצמה
+    let q = once(a.s, 'question'); host.emit('host:next'); await q;
+    let rev = once(host, 'reveal'); a.s.emit('player:answer', { choice: 1 });
+    const r1 = await rev;
+    assert.equal(r1.auto.seconds, 3); assert.equal(r1.auto.paused, false);
+    assert.ok(r1.auto.remainingMs > 2500 && r1.auto.remainingMs <= 3000);
+    const t0 = Date.now();
+    const q2 = await once(host, 'question', 6000);
+    assert.equal(q2.index, 1);
+    assert.ok(Date.now() - t0 >= 2800, 'waited for auto-advance');
+    // שאלה 2: השהיה בזמן החשיפה -> לא ממשיך; המשך -> ממשיך
+    rev = once(host, 'reveal'); a.s.emit('player:answer', { choice: 1 }); await rev;
+    const paused = once(host, 'auto');
+    host.emit('host:auto', { paused: true });
+    assert.equal((await paused).paused, true);
+    let moved = false; host.once('question', () => { moved = true; });
+    await sleep(3500);
+    assert.equal(moved, false, 'paused: stays on answer');
+    // המשהה נשמר גם אחרי רענון של המנחה
+    const host2 = await connect(ctx, c);
+    const resume = await emit(host2, 'host:resume', { code, hostKey: 'h' });
+    assert.equal(resume.reveal.auto.paused, true);
+    const resumed = once(host2, 'auto');
+    host2.emit('host:auto', { paused: false });
+    assert.equal((await resumed).paused, false);
+    const q3 = await once(host2, 'question', 6000);
+    assert.equal(q3.index, 2);
+    // שאלה אחרונה: מעבר אוטומטי לתוצאות הסופיות
+    rev = once(host2, 'reveal'); a.s.emit('player:answer', { choice: 0 });
+    const r3 = await rev;
+    assert.equal(r3.isLast, true);
+    const ended = await once(host2, 'ended', 6000);
+    assert.equal(ended.results.played, 3);
+    // לחיצה ידנית על "הבא" לפני הזמן עדיין עובדת, וטיימר ישן לא גורם לקפיצה כפולה
+  } finally { await ctx.close(); }
+});
+
+test('auto-advance: manual "next" during countdown does not cause a double skip; off by default', async () => {
+  const ctx = await start();
+  try {
+    const c = await login(ctx);
+    const { host, code } = await newGame(ctx, c, [Q('1', 1, 5), Q('2', 1, 5), Q('3', 1, 5)]);
+    let q = once(host, 'question'); host.emit('host:next'); await q;
+    const r = once(host, 'reveal'); host.emit('host:reveal');
+    assert.equal((await r).auto, null, 'auto-advance off by default');
+    const quiz = (await http(ctx, 'POST', '/api/quizzes', { title: 'a', autoAdvance: 3, questions: [Q('1'), Q('2'), Q('3')] }, c)).body;
+    const h2 = await connect(ctx, c);
+    await emit(h2, 'host:create', { quizId: quiz.id, hostKey: 'x' });
+    q = once(h2, 'question'); h2.emit('host:next'); await q;
+    const rv = once(h2, 'reveal'); h2.emit('host:reveal'); await rv;
+    const indexes = []; h2.on('question', d => indexes.push(d.index));
+    h2.emit('host:next');                     // ידני לפני סיום הספירה
+    await sleep(3600);                         // הטיימר הישן היה אמור להיגמר כאן
+    assert.deepEqual(indexes, [1], 'only one advance');
+  } finally { await ctx.close(); }
+});

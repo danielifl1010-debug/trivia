@@ -106,9 +106,10 @@ test('generateQuestions: errors are clear Hebrew messages with right status', as
   await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 429, body: {} }])), e => e.status === 429 && /מכסת/.test(e.message));
   await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 403, body: {} }])), /מפתח/);
   await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 400, body: { error: { message: 'API key not valid' } } }])), /מפתח/);
-  await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 500, body: {} }])), /500/);
+  await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 418, body: {} }])), /418/);
   await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([{ status: 200, body: { candidates: [] } }])), /לא החזיר/);
-  await assert.rejects(generateQuestions({ topic: 'x' }, env, mockFetch([new TypeError('fetch failed')])), /אין חיבור/);
+  const netDown = mockFetch(Array(4).fill(0).map(() => new TypeError('fetch failed')));
+  await assert.rejects(generateQuestions({ topic: 'x' }, env, netDown), /אין חיבור/);
 });
 
 test('generateQuestions: falls back to next model on 404, honors GEMINI_MODEL', async () => {
@@ -117,8 +118,30 @@ test('generateQuestions: falls back to next model on 404, honors GEMINI_MODEL', 
   assert.equal(qs.length, 2);
   assert.match(f.calls[0].url, /my-model/);
   assert.match(f.calls[1].url, /gemini-3\.5-flash/);
-  const all404 = mockFetch([{ status: 404, body: {} }, { status: 404, body: {} }, { status: 404, body: {} }]);
+  const all404 = mockFetch(Array(4).fill(0).map(() => ({ status: 404, body: {} })));
   await assert.rejects(generateQuestions({ topic: 'x' }, env, all404), /לא נמצא/);
+});
+
+test('generateQuestions: 503 overload retries once, then switches model', async () => {
+  const quiet = { ...env, __log: { error() {} } };
+  let f = mockFetch([{ status: 503, body: { error: { message: 'overloaded' } } }, geminiOk(good)]);
+  assert.equal((await generateQuestions({ topic: 'x' }, quiet, f)).length, 2);
+  assert.equal(f.calls.length, 2); assert.match(f.calls[1].url, /gemini-3\.5-flash/);
+  f = mockFetch([{ status: 503, body: {} }, { status: 503, body: {} }, geminiOk(good)]);
+  assert.equal((await generateQuestions({ topic: 'x' }, quiet, f)).length, 2);
+  assert.match(f.calls[2].url, /gemini-flash-latest/, 'moved to next model');
+  f = mockFetch(Array(8).fill(0).map(() => ({ status: 503, body: {} })));
+  await assert.rejects(generateQuestions({ topic: 'x' }, quiet, f), e => e.status === 503 && /עמוס/.test(e.message));
+  assert.equal(f.calls.length, 8);
+});
+
+test('generateQuestions: short thinking budget, dropped if model rejects it', async () => {
+  const quiet = { ...env, __log: { error() {} } };
+  const f = mockFetch([{ status: 400, body: { error: { message: 'thinking_budget is not supported' } } }, geminiOk(good)]);
+  assert.equal((await generateQuestions({ topic: 'x' }, quiet, f)).length, 2);
+  assert.equal(f.calls[0].body.generationConfig.thinkingConfig.thinkingBudget, 512);
+  assert.equal(f.calls[1].body.generationConfig.thinkingConfig, undefined);
+  assert.equal(f.calls[1].url, f.calls[0].url, 'same model, without thinking config');
 });
 
 test('generateQuestions: timeout', async () => {
@@ -137,6 +160,11 @@ async function storeContract(s) {
   assert.match(saved.id, /^[a-f0-9]{16}$/);
   const got = await s.get(saved.id);
   assert.equal(got.questions[0].options.length, 4);
+  assert.equal(got.autoAdvance, 0);
+  await s.save(saved.id, { title: 'א', autoAdvance: 10, questions: [] });
+  assert.equal((await s.get(saved.id)).autoAdvance, 10, 'autoAdvance round-trips');
+  await s.save(saved.id, { title: 'א', autoAdvance: 999, questions: [{ text: 'ש', options: ['1', '2'], correct: 1 }] });
+  assert.equal((await s.get(saved.id)).autoAdvance, 0, 'invalid autoAdvance -> off');
   got.title = 'mutated';
   assert.equal((await s.get(saved.id)).title, 'א', 'get must return a copy');
   await new Promise(r => setTimeout(r, 5));
